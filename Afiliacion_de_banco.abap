@@ -5,7 +5,6 @@
 
   IMPORT zbukr zhbki zlaufd zlaufi FROM MEMORY ID 'ZB'.
 
-
   TYPES: BEGIN OF st_accerror,
       flag type char1,
       text type char100,
