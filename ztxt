@@ -1,0 +1,461 @@
+*&---------------------------------------------------------------------*
+*& Report ZPRUEBA
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zprueba.
+
+TABLES: t001,  t012, lfa1, lfbk, but000,adr6, but0bk.
+
+
+RANGES: r_anwnd      FOR  febko-anwnd.
+
+SELECTION-SCREEN SKIP 1.
+SELECTION-SCREEN BEGIN OF BLOCK 01 WITH FRAME TITLE TEXT-001.
+  SELECTION-SCREEN SKIP 1.
+  PARAMETERS s_bukrs LIKE  t001-bukrs OBLIGATORY. "DEFAULT '1000',
+  SELECT-OPTIONS:   s_bankl FOR but0bk-bankl OBLIGATORY,
+                s_lifnr FOR lfa1-lifnr OBLIGATORY.
+
+  PARAMETERS: p_accion TYPE  zacciones-accion MATCHCODE OBJECT zy_acciones.
+*              arc_ret  LIKE rlgrap-filename OBLIGATORY
+*                                       DEFAULT 'C:\tmp\'.
+
+  SELECTION-SCREEN SKIP 1.
+SELECTION-SCREEN END OF BLOCK 01.
+************************************************************************
+
+*------------------------------------------VARIABLES_VARIANTES_ALV
+
+TYPE-POOLS: slis.
+*Tablas. Catálogo de campos
+*------------------------------------------VARIABLES_VARIANTES_ALV
+
+DATA: w_disvariant      TYPE disvariant,          "Varint information
+      w_es_variant      LIKE disvariant,          "Manejo de variantes
+      w_variant_exit(1) TYPE c,                   "Manejo de variantes
+      w_repid           LIKE sy-repid,            "Para nombre del prog.
+      ok_code           TYPE sy-ucomm.
+*-----------------------------------*VARIABLES_ALV
+TYPE-POOLS: slis.
+*CATALOGO
+DATA:    i_fieldcat      TYPE  slis_t_fieldcat_alv.
+DATA:    w_fieldcat      TYPE slis_fieldcat_alv.
+DATA:    w_layout        TYPE slis_layout_alv.
+
+*----------------------------------------------VARIABLES_MSJ
+DATA: lt_report TYPE sy-repid.
+DATA: it_listheader TYPE slis_t_listheader,
+      wa_listheader TYPE slis_listheader.
+
+
+DATA: lf_sp_group  TYPE slis_t_sp_group_alv, "MANEJAR GRUPOS DE CAMPOS
+      lf_layout    TYPE slis_layout_alv,   "MANEJAR DISEÑO DE LAYOUT
+      it_topheader TYPE slis_t_listheader,  "MANEJAR CABECERA DEL REP
+      wa_top       LIKE LINE OF it_topheader. "LÍNEA PARA CABECERA
+
+
+DATA: alv_git_fieldcat TYPE slis_t_fieldcat_alv WITH HEADER LINE.     "Parametros del catalogo
+DATA msj TYPE string.
+
+TYPES:
+  BEGIN OF ty_line_arch,
+    line(500) TYPE c,
+  END OF  ty_line_arch.
+
+DATA: name1 TYPE but000-name_org1,
+      name2 TYPE but000-name_org2,
+      bankl TYPE but0bk-bankl,
+      bankn TYPE but0bk-bankn.
+
+TYPES:
+  BEGIN OF zbnk_bancaribe  ,
+    checked(1),     "3
+    accion(1),
+    name(64),
+    ced(15),
+    tipdoc(1),
+    cuenta(20),
+    tlf(11),
+    correo(64),
+    sociedad   TYPE t001-bukrs,
+    nosoci     TYPE t001-butxt,
+    partner    TYPE but000-partner,
+  END OF zbnk_bancaribe.
+
+
+DATA: lt_ztr0002 TYPE TABLE OF zfibancaribe,
+      ls_ztr0002 TYPE zfibancaribe.
+
+
+
+DATA: lt_ztr00022 TYPE TABLE OF zfibancaribe,
+      ls_ztr00022 TYPE zfibancaribe.
+
+DATA: t_estructura  TYPE TABLE OF ty_line_arch,
+      t_estructura1 TYPE TABLE OF  zbnk_bancaribe WITH HEADER LINE,
+      w_estrc_prv   TYPE          zbnk_bancaribe,
+      w_estructura  TYPE          ty_line_arch.
+
+DATA: v_string(60) TYPE c,
+      id(1),
+      v_name_txt   TYPE string,
+      v_filename   TYPE rlgrap-filename. "STRING,
+
+
+
+SELECT SINGLE *
+  INTO @DATA(ls_t001)
+  FROM t001
+  WHERE  bukrs  EQ  @s_bukrs.
+
+w_estrc_prv-sociedad  = ls_t001-bukrs.
+w_estrc_prv-nosoci  = ls_t001-butxt.
+
+
+SELECT  *
+INTO TABLE  @DATA(lt_but000)
+FROM  but000
+WHERE partner IN @s_lifnr.
+
+
+SELECT *
+      INTO TABLE  @DATA(lt_but0bk)
+      FROM but0bk
+      WHERE partner IN @s_lifnr.
+
+SELECT *
+   INTO TABLE @DATA(lt_but020)
+   FROM but020
+   WHERE partner IN @s_lifnr.
+
+SELECT  *
+      INTO TABLE @DATA(lt_adrc)
+      FROM adrc
+  FOR ALL ENTRIES IN @lt_but020
+      WHERE addrnumber = @lt_but020-addrnumber.
+
+
+SELECT  *
+      INTO TABLE @DATA(lt_adr6)
+      FROM adr6
+  FOR ALL ENTRIES IN  @lt_but020
+      WHERE addrnumber = @lt_but020-addrnumber.
+
+
+LOOP  AT  lt_but000  INTO  DATA(wa_but000).
+
+
+  CLEAR  w_estrc_prv.
+  w_estrc_prv-partner  =    wa_but000-partner.
+
+*      *Acción
+  w_estrc_prv-accion = p_accion.
+
+  IF  w_estrc_prv-accion = 'A'  AND  wa_but000-xblck = ' '.
+
+*   ***  Nombre del beneficiario
+    name1 = wa_but000-name_org1.
+    name2 = wa_but000-name_org2 .
+    CONCATENATE name1 name2  INTO w_estrc_prv-name.
+
+
+*        CEDULA
+    v_string =  wa_but000-bu_sort1.
+
+    REPLACE ALL OCCURRENCES OF 'V' IN v_string WITH 'C'.
+    REPLACE ALL OCCURRENCES OF 'J' IN v_string WITH 'R'.
+    CONDENSE v_string NO-GAPS.
+
+    w_estrc_prv-ced = v_string .
+
+*    TIPO DOCUMENTO DE IDENTIDAD
+    w_estrc_prv-tipdoc = v_string(1).
+
+    READ TABLE lt_but0bk INTO DATA(wa_but0bk) WITH  KEY  partner = wa_but000-partner.
+
+**     CUENTA BANCARIA
+    bankl = wa_but0bk-bankl.
+    bankn = wa_but0bk-bankn.
+*
+    CONCATENATE bankl bankn  INTO  w_estrc_prv-cuenta.
+
+    READ TABLE lt_but020 INTO DATA(wa_but020) WITH  KEY   partner = wa_but000-partner..
+
+    READ TABLE  lt_adrc  INTO DATA(wa_adrc) WITH  KEY  addrnumber = wa_but020-addrnumber.
+
+*        TELEFONO
+    w_estrc_prv-tlf =  wa_adrc-tel_number.
+
+    READ TABLE lt_adr6 INTO DATA(wa_adr6) WITH  KEY  addrnumber = wa_but020-addrnumber.
+*     CORREO ELECTRONICO
+    w_estrc_prv-correo  =  wa_adr6-smtp_addr.
+
+    APPEND w_estrc_prv TO t_estructura1. "para el alv
+    CLEAR:  w_estrc_prv , w_estrc_prv-correo, wa_adr6,  w_estructura.
+  ELSE.
+    MESSAGE 'EL CAMPO Bloqueo central  esta lleno' TYPE 'E'.
+  ENDIF.
+
+ENDLOOP.
+
+
+IF t_estructura1[] IS INITIAL.
+  MESSAGE 'No existen datos para su seleccion' TYPE 'I'.
+  EXIT.
+ELSE.
+
+  PERFORM do_layout.
+  PERFORM do_fieldcat.
+  PERFORM call_alv.
+ENDIF.
+
+*&---------------------------------------------------------------------*
+FORM do_layout .
+  CLEAR w_layout.
+  w_layout-box_fieldname     = 'CHECKED'.
+  w_layout-zebra             = 'X'.
+  w_layout-colwidth_optimize = ' '.
+
+ENDFORM.                    " DO_LAYOUT
+
+
+FORM do_fieldcat .
+
+  REFRESH: i_fieldcat.
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen      = '30'.
+  w_fieldcat-tabname        = 'T_ESTRUCTURA1'.
+  w_fieldcat-fieldname      = 'ACCION'.
+  w_fieldcat-reptext_ddic   = 'Accion '.
+  w_fieldcat-seltext_l      = 'Accion '.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-emphasize     = 'C200'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen      = '30'.
+  w_fieldcat-tabname        = 'T_ESTRUCTURA1'.
+  w_fieldcat-fieldname      = 'NAME'.
+  w_fieldcat-reptext_ddic   = 'Nombre del beneficiario'.
+  w_fieldcat-seltext_l      = 'Nombre del beneficiario'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-emphasize     = 'C200'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen      = '30'.
+  w_fieldcat-tabname        = 'T_ESTRUCTURA1'.
+  w_fieldcat-fieldname      = 'CED'.
+  w_fieldcat-reptext_ddic   = 'Documento de identidad del beneif'.
+  w_fieldcat-seltext_l      = 'Documento de identidad del beneif'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-emphasize     = 'C200'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen      = '30'.
+  w_fieldcat-tabname        = 'T_ESTRUCTURA1'.
+  w_fieldcat-fieldname      = 'TIPDOC'.
+  w_fieldcat-reptext_ddic   = 'Tipo documento de identificación '.
+  w_fieldcat-seltext_l      = 'Tipo documento de identificación '.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-emphasize     = 'C200'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen      = '30'.
+  w_fieldcat-tabname        = 'T_ESTRUCTURA1'.
+  w_fieldcat-fieldname      = 'CUENTA'.
+  w_fieldcat-reptext_ddic   = 'Cuenta del beneficiario '.
+  w_fieldcat-seltext_l      = 'Cuenta del beneficiario '.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-emphasize     = 'C200'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen      = '30'.
+  w_fieldcat-tabname        = 'T_ESTRUCTURA1'.
+  w_fieldcat-fieldname      = 'TLF'.
+  w_fieldcat-reptext_ddic   = 'Teléfono'.
+  w_fieldcat-seltext_l      = 'Teléfono'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-emphasize     = 'C200'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen      = '30'.
+  w_fieldcat-tabname        = 'T_ESTRUCTURA1'.
+  w_fieldcat-fieldname      = 'CORREO'.
+  w_fieldcat-reptext_ddic   = 'Correo del beneficiario'.
+  w_fieldcat-seltext_l      = 'Correo del beneficiario'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-emphasize     = 'C200'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+ENDFORM.
+
+FORM call_alv.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+      is_layout                = w_layout
+      it_fieldcat              = i_fieldcat[]
+      i_callback_pf_status_set = 'MI_STANDARD'
+      i_callback_user_command  = 'MI_USER_COMMAND'
+      i_save                   = 'X'
+    TABLES
+      t_outtab                 = t_estructura1[].
+*    EXCEPTIONS
+*      program_error      = 1
+*      OTHERS             = 2.
+
+ENDFORM.
+
+
+FORM mi_standard USING rt_extab TYPE slis_t_extab.
+  SET PF-STATUS 'STANDARD'. "Nombre del Status GUI
+ENDFORM.
+
+
+FORM mi_user_command USING r_ucomm LIKE sy-ucomm
+                                  rs_selfield TYPE slis_selfield.
+  CASE r_ucomm.
+    WHEN  '&TXT'. "Se ha hecho click en el botón
+      PERFORM popup_print.
+*    WHEN    '&TXT'.  "ACTUALIZARPANTALLA
+*      rs_selfield-refresh = 'X'.
+
+*   PERFORM load_data.
+
+    WHEN OTHERS.
+  ENDCASE.
+ENDFORM.
+
+DATA: lv_valor TYPE dmbtr.
+DATA: lv_answer TYPE char1.
+
+FORM popup_print.
+
+
+  CLEAR: lv_answer.
+
+  CALL FUNCTION 'POPUP_TO_CONFIRM'
+    EXPORTING
+      titlebar              = 'Confirmación '
+      text_question         = '¿Desea generar el TXT  de afiliacion?'
+      text_button_1         = 'Si'
+      icon_button_1         = 'ICON_CHECKED'
+      text_button_2         = 'No'
+      icon_button_2         = 'ICON_CANCEL'
+      display_cancel_button = ' '
+      popup_type            = 'ICON_HINT' "'ICON_MESSAGE_ERROR'
+    IMPORTING
+      answer                = lv_answer.
+  IF lv_answer EQ 1.
+
+
+    LOOP AT t_estructura1 INTO DATA(wa_estructura)  WHERE checked = 'X'.
+
+      CONCATENATE
+        wa_estructura-accion
+        wa_estructura-name
+        wa_estructura-ced
+        wa_estructura-tipdoc
+        wa_estructura-cuenta
+        wa_estructura-tlf
+        wa_estructura-correo
+                 INTO w_estructura
+        SEPARATED BY '/'.
+      APPEND w_estructura TO t_estructura. " para el txt
+      CLEAR:  wa_estructura.
+
+    ENDLOOP.
+
+    IF t_estructura[] IS NOT INITIAL.
+
+      DATA : f_path     TYPE string,
+             f_pathname TYPE string.
+
+
+      CALL METHOD cl_gui_frontend_services=>directory_browse
+        CHANGING
+          selected_folder      = f_path
+        EXCEPTIONS
+          cntl_error           = 1
+          error_no_gui         = 2
+          not_supported_by_gui = 3
+          OTHERS               = 4.
+
+      IF sy-subrc EQ 0.
+        CONCATENATE  f_path '\' 'AfiliacionBancaribe' '_' sy-datum sy-uzeit  '.txt' INTO v_name_txt.
+        CONDENSE v_name_txt NO-GAPS.
+        v_filename = v_name_txt.
+
+        CALL FUNCTION 'WS_DOWNLOAD'
+          EXPORTING
+            filename            = v_filename
+            filetype            = 'ASC'
+          TABLES
+            data_tab            = t_estructura
+          EXCEPTIONS
+            file_open_error     = 01
+            file_write_error    = 02
+            invalid_filesize    = 03
+            invalid_table_width = 04
+            invalid_type        = 05
+            no_batch            = 06
+            unknown_error       = 07.
+
+
+        LOOP AT t_estructura1 INTO DATA(wa_tabla)  WHERE checked = 'X'.
+
+
+          ls_ztr0002-bukrs   = s_bukrs .
+          SELECT SINGLE  butxt
+          INTO @DATA(lv_noso)
+          FROM t001
+          WHERE  bukrs  EQ  @s_bukrs.
+
+
+          ls_ztr0002-butxt   = lv_noso .
+          ls_ztr0002-bankk   = wa_tabla-cuenta(4) .
+
+          SELECT SINGLE text1
+        INTO @DATA(lv_banco)
+        FROM t012t
+        WHERE hbkid  = 'BN003' AND
+             bukrs  EQ  @s_bukrs.   .
+
+          ls_ztr0002-text1 = lv_banco.
+          ls_ztr0002-lifnr   = wa_tabla-partner .
+          ls_ztr0002-name1   = wa_tabla-name.
+          ls_ztr0002-erdat   = sy-datum.
+          ls_ztr0002-uname   = sy-uname.
+          ls_ztr0002-hora    = sy-uzeit.
+
+          SELECT SINGLE  lifnr
+            INTO @DATA(lv_valor)
+            FROM zfibancaribe
+            WHERE  lifnr  EQ   @wa_tabla-partner.
+
+          IF  lv_valor IS INITIAL.
+
+            APPEND ls_ztr0002 TO lt_ztr0002.
+            MODIFY zfibancaribe FROM TABLE lt_ztr0002.
+            COMMIT WORK AND WAIT.
+
+          ENDIF.
+        ENDLOOP.
+**CLEAR: ls_ztr0002.
+**REFRESH: lT_ztr0002.
+
+      ENDIF.
+
+    ENDIF.
+
+  ELSE.
+    MESSAGE 'No existe datos para la Propuesta' TYPE 'I'.
+  ENDIF.
+ENDFORM.
