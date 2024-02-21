@@ -1,0 +1,295 @@
+*&---------------------------------------------------------------------*
+*& Report Z_SOLPED
+*&---------------------------------------------------------------------*
+*& REPORTE CREADO POR ABAP JOSSELIN TIVERIO PARA EL  BORRADO MASIVO DE
+*& LAS SOLPED INCONCLUSAS (BORRARLAS)
+
+*&---------------------------------------------------------------------*
+
+REPORT z_solped.
+
+TABLES  eban.
+
+
+SELECTION-SCREEN: BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-t01.
+  SELECT-OPTIONS:  s_fecha   FOR eban-erdat  OBLIGATORY.
+  SELECT-OPTIONS:  s_banfn  FOR eban-banfn.
+  SELECT-OPTIONS:  s_ernam  FOR eban-ernam.
+SELECTION-SCREEN: END OF BLOCK b1.
+
+
+
+TYPES:
+  BEGIN OF ty_data,
+    numero   LIKE  eban-banfn,    "***Numero
+    posicion LIKE  eban-bnfpo,  "***Posición
+    status   LIKE  eban-statu,    "***Status
+    creador  LIKE  eban-ernam,   "***Creador
+    fecha    LIKE  eban-erdat,     "***Fecha
+     checked(1),
+  END OF  ty_data.
+
+DATA: ti_data TYPE TABLE OF ty_data  WITH HEADER LINE.
+DATA: wa_data  LIKE LINE OF ti_data.
+
+*------------------------------------------VARIABLES_VARIANTES_ALV
+DATA: w_disvariant      TYPE disvariant,          "Varint information
+      w_es_variant      LIKE disvariant,          "Manejo de variantes
+      w_variant_exit(1) TYPE c,                   "Manejo de variantes
+      w_repid           LIKE sy-repid,            "Para nombre del prog.
+      ok_code           TYPE sy-ucomm.
+*-----------------------------------*VARIABLES_ALV
+TYPE-POOLS: slis.
+*CATALOGO
+DATA:    i_fieldcat      TYPE  slis_t_fieldcat_alv.
+DATA:    w_fieldcat      TYPE slis_fieldcat_alv.
+DATA:    w_layout        TYPE slis_layout_alv.
+
+*----------------------------------------------VARIABLES_MSJ
+DATA: lt_report TYPE sy-repid.
+DATA: it_listheader TYPE slis_t_listheader,
+      wa_listheader TYPE slis_listheader.
+
+
+DATA: lf_sp_group  TYPE slis_t_sp_group_alv, "MANEJAR GRUPOS DE CAMPOS
+      lf_layout    TYPE slis_layout_alv,    "MANEJAR DISEÑO DE LAYOUT
+      it_topheader TYPE slis_t_listheader,  "MANEJAR CABECERA DEL REP
+      wa_top       LIKE LINE OF it_topheader. "LÍNEA PARA CABECERA
+DATA: alv_git_fieldcat TYPE slis_t_fieldcat_alv WITH HEADER LINE.     "Parametros del catalogo
+DATA msj TYPE string.
+
+
+PERFORM load_data.
+
+ FORM load_data.
+
+  SET SCREEN 0.
+
+  refresh: ti_DATA .
+
+SELECT * INTO TABLE  @DATA(lt_eban) FROM eban
+  WHERE erdat IN @s_fecha AND
+        banfn IN @s_banfn AND
+        ernam IN @s_ernam AND
+        statu  = 'N' AND
+        estkz  NE 'F' AND
+          LOEKZ  NE   'X'.
+
+
+IF   lt_eban IS  INITIAL.
+
+  SELECT * INTO TABLE lt_eban FROM eban
+   WHERE erdat IN s_fecha AND
+         banfn IN s_banfn AND
+         statu  = 'N' AND
+         estkz  NE 'F' AND
+          LOEKZ  NE   'X'.
+ENDIF.
+
+
+IF   lt_eban IS  INITIAL.
+ SELECT * INTO TABLE lt_eban FROM eban
+   WHERE erdat IN s_fecha AND
+         statu  = 'N' AND
+         estkz  NE 'F' AND
+          LOEKZ  NE   'X'.
+ENDIF.
+
+
+
+LOOP AT  lt_eban  INTO DATA(ls_eban).
+
+  wa_data-numero     = ls_eban-banfn.
+  wa_data-posicion   = ls_eban-bnfpo.
+  wa_data-status     = ls_eban-statu.
+  wa_data-creador    = ls_eban-ernam.
+  wa_data-fecha       = ls_eban-erdat.
+
+
+  APPEND wa_data TO ti_data .
+  CLEAR: wa_data.
+  SORT ti_data BY numero ASCENDING.
+ENDLOOP.
+
+
+ IF ti_data[] IS NOT INITIAL.
+    PERFORM do_layout.
+    PERFORM do_fieldcat.
+    PERFORM call_alv.
+ ENDIF.
+
+ ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form do_layout
+*&---------------------------------------------------------------------*
+FORM do_layout .
+CLEAR w_layout.
+w_layout-box_fieldname     = 'CHECKED'.
+  w_layout-zebra             = 'X'.
+  w_layout-colwidth_optimize = ' '.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form do_fieldcat
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM do_fieldcat .
+
+  REFRESH: i_fieldcat.
+  CLEAR:   w_fieldcat.
+
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'NUMERO'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Orden'.   "nombre
+  w_fieldcat-seltext_l = 'Orden'.
+  w_layout-colwidth_optimize = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'POSICION'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Posicion'.   "nombre
+  w_fieldcat-seltext_l = 'Posicion'.
+  w_layout-colwidth_optimize = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+ w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'STATUS'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Status'.   "nombre
+  w_fieldcat-seltext_l = 'Status'.
+  w_layout-colwidth_optimize = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+
+ w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'CREADOR'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Creador'.   "nombre
+  w_fieldcat-seltext_l = 'Creador'.
+  w_layout-colwidth_optimize = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+ w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'FECHA'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Fecha'.   "nombre
+  w_fieldcat-seltext_l = 'fecha'.
+  w_layout-colwidth_optimize = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+ENDFORM.
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM call_alv .
+CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+*      i_callback_top_of_page   = 'TOP_OF_PAGE'
+      is_layout                = w_layout
+      it_fieldcat              = i_fieldcat[]
+      i_callback_pf_status_set = 'SET_PF_STATUS'
+      i_callback_user_command  = 'USER_COMMAND'
+
+    TABLES
+      t_outtab                 = TI_DATA[]
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form top_of_page
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM set_pf_status USING rt_extab TYPE slis_t_extab.
+  SET PF-STATUS 'STANDARD'.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form top_of_page
+*&---------------------------------------------------------------------*
+*& text
+
+
+FORM user_command USING r_ucomm LIKE sy-ucomm
+                        rs_selfield TYPE slis_selfield.
+  CASE r_ucomm.
+    WHEN '&CRE'.
+ PERFORM popup_print.
+WHEN '&CRR'.
+      rs_selfield-refresh = 'X'.
+     PERFORM load_data.
+
+    WHEN OTHERS.
+  ENDCASE.
+ENDFORM.
+
+FORM popup_print .
+
+DATA: lv_valor TYPE dmbtr.
+DATA: lv_answer TYPE char1.
+
+
+
+  CLEAR: lv_answer.
+
+  CALL FUNCTION 'POPUP_TO_CONFIRM'
+    EXPORTING
+      titlebar              = 'Confirmación '
+      text_question         = '¿Desea elimimar todos los documentos seleccionados?'
+      text_button_1         = 'Si'
+      icon_button_1         = 'ICON_CHECKED'
+      text_button_2         = 'No'
+      icon_button_2         = 'ICON_CANCEL'
+      display_cancel_button = ' '
+      popup_type            = 'ICON_HINT' "'ICON_MESSAGE_ERROR'
+    IMPORTING
+      answer                = lv_answer.
+  IF lv_answer EQ 1.
+
+
+  LOOP AT TI_DATA INTO DATA(waDATA)  WHERE checked = 'X'.
+
+SELECT  SINGLE * into @data(ls_eban)
+  FROM eban
+  WHERE  BANFN =  @waDATA-numero  and
+         bnfpo =  @waDATA-posicion .
+
+IF sy-subrc EQ 0.
+
+           ls_eban-LOEKZ   =  'X'.
+
+       MODIFY eban FROM  ls_eban.
+
+  IF sy-subrc EQ 0.
+    WRITE 'Registro insertado correctamente'.
+  ELSE.
+    WRITE 'El registro No se insertó/modificó en base de datos'.
+  ENDIF.
+
+ENDIF.
+    ENDLOOP.
+ ENDIF.
+
+
+
+
+
+
+
+
+ENDFORM.
