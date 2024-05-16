@@ -1,0 +1,749 @@
+*&---------------------------------------------------------------------*
+*& Report ZACTUALIZACION_OC
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zactualizacion_oc.
+
+
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& REPORTE CREADO POR ABAP JOSSELIN TIVERIO
+* SAP007-1  Actualización Cadena de Transporte en OC
+*&---------------------------------------------------------------------*
+
+*REPORT z_solped.
+
+TABLES: eban , ekko, ekpo,  eket .
+
+
+SELECTION-SCREEN: BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-t01.
+  SELECT-OPTIONS:  s_bsart  FOR ekko-bsart  OBLIGATORY.
+  SELECT-OPTIONS:  s_lifnr  FOR ekko-lifnr.
+  SELECT-OPTIONS:  s_ebeln  FOR ekko-ebeln.
+  SELECT-OPTIONS:  s_aedat  FOR ekko-aedat.
+  SELECT-OPTIONS:  s_matkl  FOR ekpo-matkl.
+  SELECT-OPTIONS:  s_matnr  FOR ekpo-matnr.
+  SELECT-OPTIONS:  s_werks  FOR ekpo-werks.
+  SELECT-OPTIONS:  s_bednr  FOR ekpo-bednr.
+  SELECT-OPTIONS:  s_idnlf  FOR ekpo-idnlf.
+
+SELECTION-SCREEN: END OF BLOCK b1.
+
+
+TYPES:
+  BEGIN OF ty_data,
+
+    bsart      LIKE   ekko-bsart,
+    ebeln      LIKE   ekko-ebeln,
+    ebelp      LIKE   ekpo-ebelp,
+    idnlf      LIKE   ekpo-idnlf,
+    matnr      LIKE   ekpo-matnr,
+    dl_id      TYPE   string ,
+*    dl_id      LIKE   eket-dl_id,
+    tolerance  LIKE   wrf_pscd_dlhd-tolerance_ext,
+    incoterm1  LIKE   wrf_pscd_dlhd-incoterm1,
+    lewed      LIKE   ekpo-lewed,
+    zzfabric   LIKE   ekpo-zzfabric,
+    zzfrac_are LIKE   ekpo-zzfrac_are,
+    zzpais_o   LIKE   ekpo-zzpais_o,
+    zzpais_e   LIKE   ekpo-zzpais_e,
+    zzproc_imp LIKE   ekpo-zzproc_imp,
+    zznotas    LIKE   ekpo-zznotas,
+    txz01      LIKE   ekpo-txz01,
+    bednr      LIKE   ekpo-bednr,
+    menge      LIKE   ekpo-menge,
+    pais(50),
+    checked(1),
+    check(1),
+    check2(1),
+    check3(1),
+    check4(1),
+    check5(1),
+    check6(1),
+    check7(1),
+    check8(1),
+    check9(1),
+    read_only  TYPE  wdy_boolean,
+  END OF  ty_data.
+
+CONSTANTS: c_x        VALUE 'X',
+           gc_refresh TYPE syucomm VALUE '&REFRESH'.
+
+DATA: ti_data   TYPE TABLE OF ty_data  WITH HEADER LINE.
+DATA: wa_data   LIKE LINE OF ti_data.
+DATA: ti_global TYPE   ty_data.
+DATA: wa_data3   LIKE LINE OF ti_data.
+
+*------------------------------------------VARIABLES_VARIANTES_ALV
+DATA: w_disvariant      TYPE disvariant,          "Varint information
+      w_es_variant      LIKE disvariant,          "Manejo de variantes
+      w_variant_exit(1) TYPE c,                   "Manejo de variantes
+      w_repid           LIKE sy-repid,            "Para nombre del prog.
+      ok_code           TYPE sy-ucomm.
+*-----------------------------------*VARIABLES_ALV
+TYPE-POOLS: slis.
+*CATALOGO
+DATA:    i_fieldcat      TYPE  slis_t_fieldcat_alv.
+DATA:    w_fieldcat      TYPE slis_fieldcat_alv.
+DATA:    w_layout        TYPE slis_layout_alv.
+
+*----------------------------------------------VARIABLES_MSJ
+DATA: lt_report TYPE sy-repid.
+DATA: it_listheader TYPE slis_t_listheader,
+      wa_listheader TYPE slis_listheader.
+
+
+DATA: lf_sp_group  TYPE slis_t_sp_group_alv, "MANEJAR GRUPOS DE CAMPOS
+      lf_layout    TYPE slis_layout_alv,    "MANEJAR DISEÑO DE LAYOUT
+      it_topheader TYPE slis_t_listheader,  "MANEJAR CABECERA DEL REP
+      wa_top       LIKE LINE OF it_topheader. "LÍNEA PARA CABECERA
+DATA: alv_git_fieldcat TYPE slis_t_fieldcat_alv WITH HEADER LINE.     "Parametros del catalogo
+DATA msj TYPE string.
+
+
+START-OF-SELECTION .
+
+  PERFORM load_data.
+
+FORM load_data.
+
+  SET SCREEN 0.
+
+
+
+  REFRESH: ti_data .
+
+  SELECT *
+  INTO TABLE  @DATA(lt_ekko)
+  FROM  ekko
+  WHERE bsart IN  @s_bsart
+    AND lifnr IN  @s_lifnr
+    AND ebeln IN  @s_ebeln
+    AND aedat IN  @s_aedat.
+
+
+  IF  lt_ekko IS NOT  INITIAL .
+
+    SELECT *
+      INTO TABLE @DATA(lt_ekpo)
+      FROM ekpo
+      FOR ALL ENTRIES IN  @lt_ekko
+      WHERE ebeln   EQ    @lt_ekko-ebeln.
+*      AND   aedat  in    @s_AEDAT. "@lt_ekko-aedat.
+
+    SELECT *
+     INTO TABLE @DATA(lt_eket)
+      FROM eket
+      FOR ALL ENTRIES IN @lt_ekpo
+      WHERE ebeln  EQ @lt_ekpo-ebeln
+       AND  ebelp   EQ @lt_ekpo-ebelp.
+
+
+    SELECT *
+      INTO TABLE @DATA(lt_wrf)
+      FROM  wrf_pscd_dlhd
+      FOR ALL ENTRIES IN  @lt_eket
+      WHERE dl_id = @lt_eket-dl_id.
+  ENDIF.
+
+
+
+  LOOP AT lt_ekpo  INTO DATA(ls_ekpo).
+
+    wa_data-lewed         = ls_ekpo-lewed.
+    wa_data-zzfabric      = ls_ekpo-zzfabric.
+    wa_data-zzfrac_are    = ls_ekpo-zzfrac_are.
+    wa_data-zzpais_o      = ls_ekpo-zzpais_o.
+    wa_data-zzpais_e      = ls_ekpo-zzpais_e.
+
+    CONCATENATE  ls_ekpo-zzpais_o ls_ekpo-zzpais_e  INTO  wa_data-pais .
+
+    wa_data-zzproc_imp    = ls_ekpo-zzproc_imp.
+    wa_data-zznotas       = ls_ekpo-zznotas.
+    wa_data-txz01         = ls_ekpo-txz01.
+    wa_data-bednr         = ls_ekpo-bednr.
+    wa_data-menge         = ls_ekpo-menge.
+
+    READ TABLE  lt_ekko INTO DATA(ls_ekko)  WITH  KEY  ebeln  = ls_ekpo-ebeln .
+
+
+    wa_data-bsart   =  ls_ekko-bsart.
+    wa_data-ebeln   =  ls_ekko-ebeln.
+    wa_data-ebelp   =  ls_ekpo-ebelp.
+    wa_data-idnlf   =  ls_ekpo-idnlf.
+    wa_data-matnr   =  ls_ekpo-matnr.
+
+
+
+    READ TABLE  lt_eket  INTO DATA(ls_eket)  WITH  KEY    ebeln  =  ls_ekpo-ebeln
+                                                          ebelp  = ls_ekpo-ebelp.
+    wa_data-dl_id   =   ls_eket-dl_id.
+
+
+    READ TABLE  lt_wrf  INTO DATA(ls_wrf)  WITH  KEY  dl_id  =  wa_data-dl_id.
+
+    wa_data-tolerance  =  ls_wrf-tolerance_ext.
+    wa_data-incoterm1  =  ls_wrf-incoterm1.
+
+
+
+    APPEND wa_data TO ti_data.
+    CLEAR: wa_data.
+    SORT ti_data BY ebeln  ebelp ASCENDING.
+  ENDLOOP.
+***
+*
+  IF ti_data[] IS NOT INITIAL.
+    PERFORM do_layout.
+    PERFORM do_fieldcat.
+*  PERFORM do_fieldcat2.
+    PERFORM call_alv.
+  ENDIF.
+ENDFORM.
+*ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form do_layout
+*&---------------------------------------------------------------------*
+FORM do_layout .
+  CLEAR w_layout.
+*  w_layout-box_fieldname     = 'CHECKED'.
+  w_layout-zebra             = 'X'.
+  w_layout-colwidth_optimize = ' '.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form do_fieldcat
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+
+FORM do_fieldcat .
+
+  REFRESH: i_fieldcat.
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'BSART'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Proveedor'.   "nombre
+  w_fieldcat-seltext_l = 'Proveedor'.
+  w_layout-colwidth_optimize = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'EBELN'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Orden de compra'.   "nombre
+  w_fieldcat-seltext_l = 'Orden de compra'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-edit = ' '.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'EBELP'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Posción'.   "nombre
+  w_fieldcat-seltext_l = 'Posción'.
+  w_fieldcat-edit = ' '.
+  w_layout-colwidth_optimize = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'IDNLF'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Material proveedor'.   "nombre
+  w_fieldcat-seltext_l = 'Material proveedor'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-edit = ' '.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'MATNR'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Material SAP'.   "nombre
+  w_fieldcat-seltext_l = 'fecha'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-edit = ' '.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'DL_ID'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Cadena transporte'.   "nombre
+  w_fieldcat-seltext_l = 'Cadena transporte'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'CHECK'.   " Campo estandar
+  w_fieldcat-seltext_l = 'Sel'.
+  w_fieldcat-checkbox = 'X'.
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'TOLERANCE'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Tolerancia'.   "nombre
+  w_fieldcat-seltext_l = 'Tolerancia'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-ref_tabname = ' '.       "Tabla interna de referencia del campo a buscar
+  w_fieldcat-ref_fieldname  = ' '.      "Campo de la tabla interna que se quiere asociar
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'CHECK2'.   " Campo estandar
+  w_fieldcat-seltext_l = 'Sel'.
+  w_fieldcat-checkbox = 'X'.
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'INCOTERM1'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Incoterm	'.   "nombre
+  w_fieldcat-seltext_l = 'Incoterm'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-ref_tabname = ' '.       "Tabla interna de referencia del campo a buscar
+  w_fieldcat-ref_fieldname  = ' '.      "Campo de la tabla interna que se quiere asociar
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'CHECK3'.   " Campo estandar
+  w_fieldcat-seltext_l = 'Sel'.
+  w_fieldcat-checkbox = 'X'.
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'LEWED'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Fecha Aparador'.   "nombre
+  w_fieldcat-seltext_l = 'Fecha Aparador'.
+  w_layout-colwidth_optimize = 'X'.
+*  w_fieldcat-ref_TABNAME = 'EKPO'.       "Tabla interna de referencia del campo a buscar
+*  w_fieldcat-ref_fieldNAME  = 'LEWED'.      "Campo de la tabla interna que se quiere asociar
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'CHECK4'.   " Campo estandar
+  w_fieldcat-seltext_l = 'Sel'.
+  w_fieldcat-checkbox = 'X'.
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'ZZFABRIC'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Fabricante'.   "nombre
+  w_fieldcat-seltext_l = 'Fabricante'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-ref_tabname = ' '.       "Tabla interna de referencia del campo a buscar
+  w_fieldcat-ref_fieldname  = ' '.      "Campo de la tabla interna que se quiere asociar
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'CHECK5'.   " Campo estandar
+  w_fieldcat-seltext_l = 'Sel'.
+  w_fieldcat-checkbox = 'X'.
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'ZZFRAC_ARE'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Fraccion'.   "nombre
+  w_fieldcat-seltext_l = 'Fraccion'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-ref_tabname = ' '.       "Tabla interna de referencia del campo a buscar
+  w_fieldcat-ref_fieldname  = ' '.      "Campo de la tabla interna que se quiere asociar
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'CHECK6'.   " Campo estandar
+  w_fieldcat-seltext_l = 'Sel'.
+  w_fieldcat-checkbox = 'X'.
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'PAIS'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Pais Origen  '.   "nombre
+  w_fieldcat-seltext_l = 'Pais Origen	'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-ref_tabname = ' '.       "Tabla interna de referencia del campo a buscar
+  w_fieldcat-ref_fieldname  = ' '.      "Campo de la tabla interna que se quiere asociar
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'CHECK7'.   " Campo estandar
+  w_fieldcat-seltext_l = 'Sel'.
+  w_fieldcat-checkbox = 'X'.
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'ZZPROC_IMP'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Procedimiento Impot  '.   "nombre
+  w_fieldcat-seltext_l = 'Procedimiento Impot	'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-ref_tabname = ' '.       "Tabla interna de referencia del campo a buscar
+  w_fieldcat-ref_fieldname  = ' '.      "Campo de la tabla interna que se quiere asociar
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'CHECK8'.   " Campo estandar
+  w_fieldcat-seltext_l = 'Sel'.
+  w_fieldcat-checkbox = 'X'.
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'ZZNOTAS'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Transporte Importacion'.   "nombre
+  w_fieldcat-seltext_l = 'Transporte Importacion'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-ref_tabname = ' '.       "Tabla interna de referencia del campo a buscar
+  w_fieldcat-ref_fieldname  = ' '.      "Campo de la tabla interna que se quiere asociar
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+   CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'CHECK9'.   " Campo estandar
+  w_fieldcat-seltext_l = 'Sel'.
+  w_fieldcat-checkbox = 'X'.
+  w_fieldcat-edit = 'X'.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'TXZ01'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Texto Breve'.   "nombre
+  w_fieldcat-seltext_l = 'Texto Breve'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-ref_tabname = ' '.       "Tabla interna de referencia del campo a buscar
+  w_fieldcat-ref_fieldname  = ' '.      "Campo de la tabla interna que se quiere asociar
+  w_fieldcat-edit = ' '.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'BEDNR'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Numero Necesidad	'.   "nombre
+  w_fieldcat-seltext_l = 'Numero Necesidad  '.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-ref_tabname = ' '.       "Tabla interna de referencia del campo a buscar
+  w_fieldcat-ref_fieldname  = ' '.      "Campo de la tabla interna que se quiere asociar
+  w_fieldcat-edit = ' '.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+  CLEAR:   w_fieldcat.
+  w_fieldcat-outputlen = '30'.
+  w_fieldcat-tabname = 'TI_DATA'.
+  w_fieldcat-fieldname = 'MENGE'.   " Campo estandar
+  w_fieldcat-reptext_ddic = 'Cantidad'.   "nombre
+  w_fieldcat-seltext_l = 'Cantidad'.
+  w_layout-colwidth_optimize = 'X'.
+  w_fieldcat-edit = ' '.
+  APPEND w_fieldcat TO i_fieldcat.
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*]
+
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM call_alv. "REUSE_ALV_LIST_DISPLAY”
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+*     i_callback_top_of_page   = 'TOP_OF_PAGE'
+      is_layout                = w_layout
+      it_fieldcat              = i_fieldcat[]
+      i_callback_pf_status_set = 'SET_PF_STATUS'
+      i_callback_user_command  = 'USER_COMMAND'
+    TABLES
+      t_outtab                 = ti_data[]
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form top_of_page
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM set_pf_status USING rt_extab TYPE slis_t_extab.
+  SET PF-STATUS 'STANDARD'.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form top_of_page
+*&---------------------------------------------------------------------*
+
+FORM user_command USING r_ucomm LIKE sy-ucomm
+                       rs_selfield TYPE slis_selfield.
+  CASE r_ucomm.
+    WHEN 'GRABAR'.
+      PERFORM popup_print.
+
+    WHEN 'MASS '.
+      PERFORM popup_copiar .
+
+      rs_selfield-refresh    = c_x.
+      rs_selfield-col_stable = c_x.
+      rs_selfield-row_stable = c_x.
+
+    WHEN '&CRE'.
+      rs_selfield-refresh = 'X'.
+      PERFORM load_data.
+*    WHEN OTHERS.
+  ENDCASE.
+ENDFORM.
+
+FORM popup_print.
+
+
+
+  LOOP AT ti_data INTO DATA(wadata).
+
+    SELECT  SINGLE * INTO @DATA(ls_ekpo)
+      FROM ekpo
+      WHERE  ebeln =  @wadata-ebeln  AND
+             ebelp =  @wadata-ebelp .
+
+    IF sy-subrc EQ 0.
+      ls_ekpo-zzfrac_are   =  wadata-zzfrac_are.
+      ls_ekpo-lewed        =  wadata-lewed.
+      ls_ekpo-zzpais_o     =  wadata-pais  .
+      ls_ekpo-zzpais_e     =  wadata-pais  .
+      ls_ekpo-zzfabric     =  wadata-zzfabric.
+      ls_ekpo-zzproc_imp   =  wadata-zzproc_imp.
+      ls_ekpo-zznotas      =  wadata-zznotas.
+
+      MODIFY ekpo FROM  ls_ekpo.
+
+      SELECT SINGLE * INTO @DATA(ls_eket)
+        FROM eket
+        WHERE ebeln =  @wadata-ebeln  AND
+              ebelp =  @wadata-ebelp .
+
+      ls_eket-dl_id = wadata-dl_id.
+
+      MODIFY  eket FROM   ls_eket.
+
+      SELECT SINGLE * INTO  @DATA(ls_dlhd)
+        FROM wrf_pscd_dlhd
+        WHERE dl_id = @ls_eket-dl_id.
+
+
+      ls_dlhd-tolerance_ext   = wadata-tolerance.
+      ls_dlhd-incoterm1       = wadata-incoterm1.
+
+      MODIFY wrf_pscd_dlhd FROM  ls_dlhd.
+
+    ENDIF.
+  ENDLOOP.
+
+
+ENDFORM.
+
+FORM popup_copiar.
+
+  DATA ls_ref1 TYPE REF TO cl_gui_alv_grid .
+
+  CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+    IMPORTING
+      e_grid = ls_ref1.
+
+  CALL METHOD ls_ref1->check_changed_data.
+
+
+  DATA: val1 TYPE  eket-dl_id,
+        val2 TYPE  wrf_pscd_dlhd-tolerance_ext,
+        val3 TYPE  wrf_pscd_dlhd-incoterm1,
+        val4 TYPE  ekpo-lewed,
+        val5 TYPE  ekpo-zzfabric,
+        val6 TYPE  ekpo-zzfrac_are,
+        val7(50),
+        val8 TYPE ekpo-zzproc_imp,
+        val9 TYPE ekpo-zznotas.
+
+
+ LOOP AT  ti_data INTO DATA(ls_global) where check = 'X'.
+
+      IF val1 IS  INITIAL.
+        val1 = ls_global-dl_id.
+      ENDIF.
+      ls_global-dl_id   =    val1.
+
+      MODIFY ti_data FROM ls_global INDEX sy-tabix.
+*    ENDIF.
+  ENDLOOP .
+
+LOOP AT  ti_data INTO ls_global where check2 = 'X'.
+
+      IF val2 IS  INITIAL.
+        val2 = ls_global-tolerance.
+      ENDIF.
+      ls_global-tolerance   =    val2.
+
+      MODIFY ti_data FROM ls_global INDEX sy-tabix.
+*    ENDIF.
+  ENDLOOP .
+
+
+
+LOOP AT  ti_data INTO ls_global where check3 = 'X'.
+
+      IF val3 IS  INITIAL.
+        val3 = ls_global-INCOTERM1.
+      ENDIF.
+      ls_global-INCOTERM1   =    val3.
+
+      MODIFY ti_data FROM ls_global INDEX sy-tabix.
+*    ENDIF.
+  ENDLOOP .
+
+
+LOOP AT  ti_data INTO ls_global where check4 = 'X'.
+
+      IF val4 IS  INITIAL.
+        val4 = ls_global-LEWED .
+      ENDIF.
+      ls_global-LEWED   =    val4 .
+
+      MODIFY ti_data FROM ls_global INDEX sy-tabix.
+*    ENDIF.
+  ENDLOOP .
+
+LOOP AT  ti_data INTO ls_global where check5 = 'X'.
+
+      IF val5 IS  INITIAL.
+        val5 = ls_global-ZZFABRIC  .
+      ENDIF.
+      ls_global-ZZFABRIC    =    val5 .
+
+      MODIFY ti_data FROM ls_global INDEX sy-tabix.
+*    ENDIF.
+  ENDLOOP .
+
+
+
+LOOP AT  ti_data INTO ls_global where check6 = 'X'.
+
+      IF val6 IS  INITIAL.
+        val6 = ls_global-ZZFRAC_ARE  .
+      ENDIF.
+      ls_global-ZZFRAC_ARE    =    val6 .
+
+      MODIFY ti_data FROM ls_global INDEX sy-tabix.
+*    ENDIF.
+  ENDLOOP .
+
+  LOOP AT  ti_data INTO ls_global where check7 = 'X'.
+
+      IF val7 IS  INITIAL.
+        val7 = ls_global-PAIS   .
+      ENDIF.
+      ls_global-PAIS     =    val7 .
+
+      MODIFY ti_data FROM ls_global INDEX sy-tabix.
+
+  ENDLOOP .
+
+
+
+
+  LOOP AT  ti_data INTO ls_global where check8 = 'X'.
+
+      IF val8 IS  INITIAL.
+        val8 = ls_global-zzproc_imp.
+      ENDIF.
+      ls_global-zzproc_imp   =    val8.
+
+      MODIFY ti_data FROM ls_global INDEX sy-tabix.
+*    ENDIF.
+
+  ENDLOOP .
+
+
+  LOOP AT  ti_data INTO ls_global where check9 = 'X'.
+
+      IF val9 IS  INITIAL.
+        val9 = ls_global-ZZNOTAS .
+      ENDIF.
+      ls_global-ZZNOTAS    =    val9.
+
+      MODIFY ti_data FROM ls_global INDEX sy-tabix.
+*    ENDIF.
+
+  ENDLOOP .
+
+
+
+ENDFORM.
